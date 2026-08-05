@@ -1,6 +1,6 @@
-# SGEMV — bandwidth-bound matrix-vector multiplication on RDNA3
+# SGEMV — Matrix-Vector Multiplication on RDNA3
 
-my master's thesis benchmarked successive optimization levels
+My master's thesis benchmarked successive optimization levels
 of a SYCL SGEMV against an optimized CUDA implementation. This project
 revisits the problem on AMD hardware, with bandwidth utilization as
 the primary metric.
@@ -8,7 +8,18 @@ the primary metric.
 
 ## Metric
 
-Theoretical peak bandwith : **624 GB/s**
+| | GB/s |
+|---|---|
+| Theoretical peak (GDDR6) | **624** |
+| Practical peak (BabelStream 5.0, Dot, float, 403 MB) | **528** |
+
+Efficiency figures below will use the **practical** peak as denominator.
+Dot is the closest structural analogue to SGEMV: read-dominated,
+with a reduction and a negligible write.
+
+    useful_bytes = (M·N + N + 2M) · sizeof(float)
+    BW_eff       = useful_bytes / elapsed
+    efficiency   = BW_eff / 528e9
 
 ## Environment
 
