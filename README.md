@@ -5,6 +5,7 @@ of a SYCL SGEMV against an optimized CUDA implementation. This project
 revisits the problem on AMD hardware, with bandwidth utilization as
 the primary metric.
 
+My previous implementations stopped at a suboptimal `sgemv_block`, and I will focus here on `sgemv_wave32` and on using the `float4` type for wider load/store instructions.
 
 ## Metric
 
@@ -51,13 +52,45 @@ with a reduction and a negligible write.
 | **L2** | 4 MB | 60 CU | device-wide |
 | **Infinity Cache (MALL)** | 64 MB | 60 CU | in front of GDDR6 |
 
+## Kernel variants
+
+| Variant | Geometry | Reduction | LDS/block | VGPR |
+|---|---|---|---|---|
+| `sgemv_naive` | 1 thread per row | sequential, in-register | 0 | 5 |
+| `sgemv_block` | 1 block (256 thr) per row | LDS tree, then wave shuffles | 1 KB | 8 |
+| `sgemv_wave32` | — | — | — |
+
 ## Results
 
-## Kernel variants
-- naive
-## Options to run
+| Variant | Time | BW_eff | % of 528 |
+|---|---|---|---|
+| `sgemv_naive` | 210.19 ms | 20 GB/s | **3.9%** |
+| `sgemv_block` | 8.79 ms | 490 GB/s | **92.7 %** | 
+| `sgemv_wave32` | — | — | — |
+
+## Reproducing
+
+Variants are declared once, in `include/variants.hpp`:
+
+```cpp
+{"naive",  sgemv_naive,    1},   // name, kernel, threads per row
+{"block",  sgemv_block,  256},
+{"wave32", sgemv_wave32,  32},
+```
+
+Both the benchmark and the test binary read that table, and both derive the
+launch geometry from `threads_per_row` rather than spelling it out. Adding a
+variant means one line here and one kernel. The harness does not change, and
+the grid cannot drift apart between the two binaries.
+
 ```bash
-make build
-make run
+make bench                   # every variant
+make bench VARIANT=naive     # one, or several: VARIANT="naive block"
+make test                    # correctness: every variant x 5 shapes
+make resources               # LDS, VGPR, spills, occupancy
+make isa                     # demangled GCN assembly
 make clean
 ```
+
+
+

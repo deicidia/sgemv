@@ -1,16 +1,35 @@
-.PHONY: build run clean test
+HIPCC   := hipcc
+FLAGS   := -O3 -Iinclude --offload-arch=gfx1101
+KERNELS := kernels/kernels.hip
 
-build:
-	@mkdir -p bin profiling
-	hipcc -O3 -Iinclude src/main.cpp kernels/kernels.hip -o bin/out --offload-arch=gfx1101
+.PHONY: bench test resources isa clean
 
-run:
-	./bin/out
+# No argument benchmarks every variant; `make bench VARIANT=naive` picks one,
+# and several names may be passed: `make bench VARIANT="naive block"`.
+bench: bin/bench
+	@./bin/bench $(VARIANT)
+
+test: bin/test
+	@./bin/test
+
+bin/bench: src/bench.cpp $(KERNELS) include/variants.hpp include/kernels.hpp
+	@mkdir -p bin
+	$(HIPCC) $(FLAGS) src/bench.cpp $(KERNELS) -o $@
+
+bin/test: test/kernel_test.cpp $(KERNELS) include/variants.hpp include/kernels.hpp
+	@mkdir -p bin
+	$(HIPCC) $(FLAGS) test/kernel_test.cpp $(KERNELS) -o $@
+
+# LDS, VGPR, spills and occupancy, straight from the compiler. Needs the kernel
+# source, not a compiled binary.
+resources:
+	@$(HIPCC) $(FLAGS) -Rpass-analysis=kernel-resource-usage -c $(KERNELS) -o /dev/null 2>&1 \
+		| c++filt | sed 's/ \[-Rpass.*//' | grep 'remark:' | sed 's/^.*remark: *//'
+
+isa:
+	@mkdir -p profiling
+	@$(HIPCC) $(FLAGS) --offload-device-only -S $(KERNELS) -o - 2>/dev/null | c++filt > profiling/kernels.s
+	@echo "-> profiling/kernels.s"
 
 clean:
-	rm -f bin/out
-
-test:
-	@mkdir -p bin profiling
-	hipcc -O3 -Iinclude test/kernel_test.cpp kernels/kernels.hip -o bin/test --offload-arch=gfx1101
-	./bin/test
+	rm -rf bin

@@ -10,7 +10,7 @@
 #include <thrust/device_vector.h>
 
 #include "hip_utils.hpp"
-#include "kernels.hpp"
+#include "variants.hpp"
 
 struct Case 
 {
@@ -42,7 +42,8 @@ auto reference(const std::vector<float>& A, const std::vector<float>& x,
     return Y;
 }
 
-auto run_kernel(const std::vector<float>& A, const std::vector<float>& x,
+auto run_kernel(const Variant& v,
+                const std::vector<float>& A, const std::vector<float>& x,
                 const std::vector<float>& Y_init, float a, float b,
                 int m, int n) -> std::vector<float>
 {
@@ -51,16 +52,16 @@ auto run_kernel(const std::vector<float>& A, const std::vector<float>& x,
     thrust::device_vector<float> d_x = x;
     thrust::device_vector<float> d_Y = Y_init;
 
-    constexpr int block = 256;
-    const int grid = (m + block - 1) / block;
+    // Same geometry rule as the benchmark, from the same table.
+    const int grid = grid_for(v, m);
 
-    sgemv_naive<<<grid, block>>>(
+    v.kernel<<<grid, kBlockSize>>>(
         a,
         thrust::raw_pointer_cast(d_A.data()),
         thrust::raw_pointer_cast(d_x.data()),
         b,
         thrust::raw_pointer_cast(d_Y.data()),
-        static_cast<int>(m), static_cast<int>(n)
+        m, n
     );
 
     HIP_CHECK(hipGetLastError());
@@ -78,7 +79,7 @@ auto tol(int n) -> double
     return std::numeric_limits<float>::epsilon() * (4.0 * n + 8.0);
 }
 
-auto run_case(const Case& c) -> bool
+auto run_case(const Variant& v, const Case& c) -> bool
 {
     std::vector<float> A(c.m * c.n);
     std::vector<float> x(c.n);
@@ -93,7 +94,7 @@ auto run_case(const Case& c) -> bool
     std::generate(Y_init.begin(), Y_init.end(), [&]() { return dis(gen); });
 
     auto Y_ref = reference(A, x, Y_init, c.a, c.b, c.m, c.n);
-    auto Y_test = run_kernel(A, x, Y_init, c.a, c.b, c.m, c.n);
+    auto Y_test = run_kernel(v, A, x, Y_init, c.a, c.b, c.m, c.n);
 
     bool success = true;
     double max_err = 0.0;
@@ -126,13 +127,19 @@ auto main() -> int
         {"negative alpha",        1024, 1024, -1.0f,  2.0f},
     };
 
-    try 
-    {   
+    try
+    {
         bool all_passed = true;
-        for(auto const & c : cases)
+        // Every variant against the same double-precision reference: a correct
+        // kernel lands on it whatever its geometry or reduction order.
+        for(auto const & v : variants())
         {
-            if(!run_case(c)) all_passed = false;
-            
+            std::cout << "=== " << v.name << " ===\n";
+            for(auto const & c : cases)
+            {
+                if(!run_case(v, c)) all_passed = false;
+            }
+            std::cout << '\n';
         }
         std::cout << (all_passed ? "All test cases passed." : "Some test cases failed.") << std::endl;
         return all_passed ? EXIT_SUCCESS : EXIT_FAILURE;
