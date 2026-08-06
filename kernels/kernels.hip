@@ -1,7 +1,7 @@
 #include "kernels.hpp"
 #include "hip_utils.hpp"
 
-// Naive implementation of the GEMV kernel, each thread computes one row of the output vector
+// Naive implementation of the sgemv kernel, each thread computes one row of the output vector
 __global__ void sgemv_naive(float a, const float* A, const float* x, float b, float* Y, int m, int n)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
@@ -17,7 +17,7 @@ __global__ void sgemv_naive(float a, const float* A, const float* x, float b, fl
 }
 
 /**  
- * Block implementation of the GEMV kernel, each block computes one row of the output vector using shared memory for reduction.
+ * Block implementation of the sgemv kernel, each block computes one row of the output vector using shared memory for reduction.
  * Inspired by Mark Harris https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf for the reduction part.
  * To much synchronization overhead, not efficient for small matrices, which lead to the warp implementation below.
  * */ 
@@ -52,7 +52,7 @@ __global__ void sgemv_block(float a, const float* A, const float* x, float b, fl
     if (threadIdx.x == 0) Y[row] = a * v + b * Y[row];
 }
 
-// Warp implementation of the GEMV kernel : TODO 
+// Warp implementation of the sgemv kernel : TODO 
 __global__ void sgemv_wave32(float a, const float* A, const float* x, float b, float* Y, int m, int n)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
