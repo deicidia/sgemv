@@ -27,7 +27,7 @@ auto main() -> int
         const int grid = (m + block - 1) / block;
 
         
-        gemv_kernel<<<grid, block>>>(
+        sgemv_naive<<<grid, block>>>(
             a, 
             thrust::raw_pointer_cast(d_A.data()), 
             thrust::raw_pointer_cast(d_x.data()), 
