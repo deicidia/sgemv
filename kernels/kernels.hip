@@ -19,7 +19,7 @@ __global__ void sgemv_naive(float a, const float* A, const float* x, float b, fl
 /**  
  * Block implementation of the GEMV kernel, each block computes one row of the output vector using shared memory for reduction.
  * Inspired by Mark Harris https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf for the reduction part.
- * To much synchronization overhead, not efficient for small matrices, which leadm to the warp implementation below.
+ * To much synchronization overhead, not efficient for small matrices, which lead to the warp implementation below.
  * */ 
 __global__ void sgemv_block(float a, const float* A, const float* x, float b, float* Y, int m, int n)
 {
