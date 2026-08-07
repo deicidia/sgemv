@@ -5,17 +5,17 @@ of a SYCL SGEMV against an optimized CUDA implementation. This project
 revisits the problem on AMD hardware, with bandwidth utilization as
 the primary metric.
 
-My previous implementations stopped at a suboptimal `sgemv_block`, and I will focus here on `sgemv_wave32` and on using the `float4` type for wider load/store instructions.
+My previous implementations stopped at a suboptimal `sgemv_block`, this repository focuses on using one wave per row, using the `float4` type for wider load/store instructions and `pragma unroll 4` for Memory-Level Parallelism.
 
 ## Metric
 
 | | GB/s |
 |---|---|
 | Theoretical peak (GDDR6) | **624** |
-| Practical peak (BabelStream 5.0, Copy, float, 403 MB) | **613**|
+| Practical peak (BabelStream 5.0, Copy, float, 134 MB/array) | **613**|
 
 The denominator started as BabelStream's Dot (521 GB/s), the closest
-structural analogue: read-dominated, with a reduction and a negligible write. However, since `sgevm_wave32` reached 111% of this baseline, I switched to Copy (613 GB/s). This is the highest bandwidth BabelStream achieves on this card, providing a proper upper bound for a read-dominated kernel.
+structural analogue: read-dominated, with a reduction and a negligible write. However, since `sgemv_wave32` reached 111% of this baseline, I switched to Copy (613 GB/s). This is the highest bandwidth BabelStream achieves on this card, providing a proper upper bound for a read-dominated kernel.
 
     useful_bytes = (M·N + N + 2M) · sizeof(float)
     BW_eff       = useful_bytes / elapsed
@@ -58,22 +58,25 @@ structural analogue: read-dominated, with a reduction and a negligible write. Ho
 | `sgemv_naive` | 1 thread per row | sequential, in-register | 0 | 5 |
 | `sgemv_block` | 1 block (256 thr) per row | LDS tree, then wave shuffles | 1 KB | 8 |
 | `sgemv_wave32` | 1 wave (32 thr) per row | wave shuffles | 0 | 17 |
+| `sgemv_wave32_float4` | 1 wave (32 thr) per row | wave shuffles | 0 | 40 |
 
 ## Results
 
 | Variant | Time | BW_eff | % of 613 |
 |---|---|---|---|
 | `sgemv_naive` | 189.84 ms | 22.7 GB/s | **3.7 %** |
-| `sgemv_block` | 	8.75 ms | 492.0 GB/s | **80.3 %** | 
+| `sgemv_block` | 8.75 ms | 492.0 GB/s | **80.3 %** | 
 | `sgemv_wave32` | 7.29 ms | 589.9 GB/s | **96.2 %** |
+| `sgemv_wave32_float4` | 7.11 ms | 605.0 GB/s | **98.7 %** |
+
+Benchmarked using $m = 2^{20}$ and $n = 2^{10}$. 4.303 GB of incompressible traffic per launch, well clear
+of the 64 MB Infinity Cache. Mean over 50 launches after 5 warm-up launches,
+timed with `hipEvent` so that host launch overhead and the D2H copy stay out
+of the measurement. A single cold launch swings from 78 % to 94 %, which is what the warm-up and the loop buy.
 
 ### Performance Analysis:
 
-The `sgemv_wave32` variant achieves **589.9 GB/s** (96.2% of peak bandwidth) by maximizing memory-level parallelism.
-
-*   **Memory-Level Parallelism (MLP):** The `#pragma unroll 4` directive is the primary driver of this performance jump. It allows the GPU to issue multiple memory loads concurrently before waiting on the data, effectively hiding memory latency and avoiding pipeline stalls.
-*   **The Vectorization Limit:** The compiler does not emit 128-bit vectorized loads (`global_load_b128`). Because the loop increments by `warpSize`, a single thread's successive memory reads are separated by 128 bytes. Without contiguous memory access per thread, the compiler cannot merge these loads.
-*   **Future Optimization:** To unlock vectorized 128-bit loads, the memory access pattern needs to be restructured using `float4`. This requires each thread to read four adjacent floats simultaneously rather than striding across the warp.
+The `sgemv_wave32_float4` variant achieves **605.0 GB/s** (98.7% of peak bandwidth) by maximizing memory-level parallelism through concurrent memory loads. Utilizing the `float4` data type enables the compiler to generate `global_load_b128` instructions without requiring inline assembly. Furthermore, assigning a single wavefront per row minimizes the need for block-wide synchronization (__syncthreads()) and leverages the `__shfl_xor` intrinsic to completely avoid inter-wave communication during the kernel's reduction phase.
 
 ## Reproducing
 
@@ -83,6 +86,7 @@ Variants are declared once, in `include/variants.hpp`:
 {"naive",  sgemv_naive,    1},   // name, kernel, threads per row
 {"block",  sgemv_block,  256},
 {"wave32", sgemv_wave32,  32},
+{"wave32_float4", sgemv_wave32_float4,  32},
 ```
 
 Both the benchmark and the test binary read that table, and both derive the

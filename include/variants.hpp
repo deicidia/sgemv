@@ -25,6 +25,7 @@ inline const std::vector<Variant>& variants()
         {"naive",  sgemv_naive,    1},
         {"block",  sgemv_block,  256},
         {"wave32", sgemv_wave32,  32},
+        {"wave32_float4", sgemv_wave32_float4,  32},
     };
     return v;
 }
