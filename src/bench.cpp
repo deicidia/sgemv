@@ -16,7 +16,7 @@ namespace
 
 constexpr int    kWarmup   = 5;    // absorbs code-object load and clock ramp-up
 constexpr int    kIters    = 50;
-constexpr double kPeakBps  = 528e9;  // BabelStream 5.0, Dot, float, 403 MB
+constexpr double kPeakBps  = 613e9;  // BabelStream 5.0, Copy, float, 403 MB
 
 struct Result
 {

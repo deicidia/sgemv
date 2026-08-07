@@ -12,15 +12,14 @@ My previous implementations stopped at a suboptimal `sgemv_block`, and I will fo
 | | GB/s |
 |---|---|
 | Theoretical peak (GDDR6) | **624** |
-| Practical peak (BabelStream 5.0, Dot, float, 403 MB) | **528** |
+| Practical peak (BabelStream 5.0, Copy, float, 403 MB) | **613**|
 
-Efficiency figures below will use the **practical** peak as denominator.
-Dot is the closest structural analogue to SGEMV: read-dominated,
-with a reduction and a negligible write.
+The denominator started as BabelStream's Dot (521 GB/s), the closest
+structural analogue: read-dominated, with a reduction and a negligible write. However, since `sgevm_wave32` reached 111% of this baseline, I switched to Copy (613 GB/s). This is the highest bandwidth BabelStream achieves on this card, providing a proper upper bound for a read-dominated kernel.
 
     useful_bytes = (M·N + N + 2M) · sizeof(float)
     BW_eff       = useful_bytes / elapsed
-    efficiency   = BW_eff / 528e9
+    efficiency   = BW_eff / 613e9
 
 ## Environment
 
@@ -58,15 +57,23 @@ with a reduction and a negligible write.
 |---|---|---|---|---|
 | `sgemv_naive` | 1 thread per row | sequential, in-register | 0 | 5 |
 | `sgemv_block` | 1 block (256 thr) per row | LDS tree, then wave shuffles | 1 KB | 8 |
-| `sgemv_wave32` | — | — | — |
+| `sgemv_wave32` | 1 wave (32 thr) per row | wave shuffles | 0 | 17 |
 
 ## Results
 
-| Variant | Time | BW_eff | % of 528 |
+| Variant | Time | BW_eff | % of 613 |
 |---|---|---|---|
-| `sgemv_naive` | 210.19 ms | 20 GB/s | **3.9%** |
-| `sgemv_block` | 8.79 ms | 490 GB/s | **92.7 %** | 
-| `sgemv_wave32` | — | — | — |
+| `sgemv_naive` | 189.84 ms | 22.7 GB/s | **3.7 %** |
+| `sgemv_block` | 	8.75 ms | 492.0 GB/s | **80.3 %** | 
+| `sgemv_wave32` | 7.29 ms | 589.9 GB/s | **96.2 %** |
+
+### Performance Analysis:
+
+The `sgemv_wave32` variant achieves **589.9 GB/s** (96.2% of peak bandwidth) by maximizing memory-level parallelism.
+
+*   **Memory-Level Parallelism (MLP):** The `#pragma unroll 4` directive is the primary driver of this performance jump. It allows the GPU to issue multiple memory loads concurrently before waiting on the data, effectively hiding memory latency and avoiding pipeline stalls.
+*   **The Vectorization Limit:** The compiler does not emit 128-bit vectorized loads (`global_load_b128`). Because the loop increments by `warpSize`, a single thread's successive memory reads are separated by 128 bytes. Without contiguous memory access per thread, the compiler cannot merge these loads.
+*   **Future Optimization:** To unlock vectorized 128-bit loads, the memory access pattern needs to be restructured using `float4`. This requires each thread to read four adjacent floats simultaneously rather than striding across the warp.
 
 ## Reproducing
 

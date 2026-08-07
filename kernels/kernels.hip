@@ -52,17 +52,26 @@ __global__ void sgemv_block(float a, const float* A, const float* x, float b, fl
     if (threadIdx.x == 0) Y[row] = a * v + b * Y[row];
 }
 
-// Warp implementation of the sgemv kernel : TODO 
+// Warp implementation of the sgemv kernel 
 __global__ void sgemv_wave32(float a, const float* A, const float* x, float b, float* Y, int m, int n)
 {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    if (row < m)
+    const int lane  = threadIdx.x % warpSize; // lane index in the warp
+    const int wave  = threadIdx.x / warpSize; // wave index in the block
+    const int waves = blockDim.x / warpSize;  // number of waves in the block
+    const int row   = blockIdx.x * waves + wave; // row index in the matrix
+
+   if (row >= m) return;
+
+    float local_sum = 0.0f;
+
+    #pragma unroll 4
+    for (int i = lane; i < n; i += warpSize)
     {
-        float sum = 0.0f;
-        for (int col = 0; col < n; ++col)
-        {
-            sum += A[row * n + col] * x[col];
-        }
-        Y[row] = a * sum + b * Y[row];
+        local_sum += A[static_cast<size_t>(row) * n + i] * x[i];
     }
+
+    for (int off = warpSize / 2; off > 0; off >>= 1)
+        local_sum += __shfl_xor(local_sum, off, warpSize);
+
+    if (lane == 0) Y[row] = a * local_sum + b * Y[row];
 }
