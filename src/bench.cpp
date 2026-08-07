@@ -120,8 +120,8 @@ auto main(int argc, char** argv) -> int
                   << std::setprecision(3) << gb << " GB per launch)\n"
                   << kIters << " iterations, +" << kWarmup << " warm-up, hipEvent timing\n\n";
 
-        std::cout << std::left << std::setw(10) << "variant"
-                  << std::right << std::setw(8) << "thr/row"
+        std::cout << std::left << std::setw(14) << "variant"
+                  << std::right << std::setw(14) << "thr/row"
                   << std::setw(12) << "time (ms)"
                   << std::setw(12) << "GB/s"
                   << std::setw(10) << "% of peak" << '\n';
@@ -129,8 +129,8 @@ auto main(int argc, char** argv) -> int
         for (const auto& v : selected)
         {
             const Result r = benchmark(v, m, n, d_A, d_x, d_Y);
-            std::cout << std::left << std::setw(10) << v.name
-                      << std::right << std::setw(8) << v.threads_per_row
+            std::cout << std::left << std::setw(14) << v.name
+                      << std::right << std::setw(14) << v.threads_per_row
                       << std::setw(12) << std::fixed << std::setprecision(2) << r.ms
                       << std::setw(12) << std::setprecision(1) << r.bw / 1e9
                       << std::setw(9) << std::setprecision(1) << r.efficiency * 100 << '%'
